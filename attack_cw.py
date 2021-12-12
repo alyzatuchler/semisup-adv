@@ -5,46 +5,52 @@ https://github.com/bethgelab/foolbox
 """
 
 try:
-    from foolbox.models import PyTorchModel
     from foolbox.attacks import Attack
     from foolbox.attacks.base import call_decorator
-    from foolbox.utils import onehot_like
     from foolbox.distances import Linf
+    from foolbox.models import PyTorchModel
+    from foolbox.utils import onehot_like
+
     HAVE_FOOLBOX = True
 except ImportError:
     HAVE_FOOLBOX = False
     Attack = object
     call_decorator = lambda x: x
-import numpy as np
 import logging
 
+import numpy as np
 
-def cw(model,
-       X,
-       y,
-       binary_search_steps=5,
-       max_iterations=1000,
-       learning_rate=5E-3,
-       initial_const=1E-2,
-       tau_decrease_factor=0.9
-       ):
+
+def cw(
+    model,
+    X,
+    y,
+    binary_search_steps=5,
+    max_iterations=1000,
+    learning_rate=5e-3,
+    initial_const=1e-2,
+    tau_decrease_factor=0.9,
+):
     if not HAVE_FOOLBOX:
-        raise ImportError('Could not import FoolBox')
+        raise ImportError("Could not import FoolBox")
 
     foolbox_model = PyTorchModel(model, bounds=(0, 1), num_classes=10)
     attack = CarliniWagnerLIAttack(foolbox_model, distance=Linf)
     linf_distances = []
     for i in range(len(X)):
-        logging.info('Example: %g', i)
+        logging.info("Example: %g", i)
         image = X[i, :].detach().cpu().numpy()
         label = y[i].cpu().numpy()
-        adversarial = attack(image, label,
-                             binary_search_steps=binary_search_steps,
-                             max_iterations=max_iterations,
-                             learning_rate=learning_rate,
-                             initial_const=initial_const,
-                             tau_decrease_factor=tau_decrease_factor)
-        logging.info('Linf distance: %g', np.max(np.abs(adversarial - image)))
+        adversarial = attack(
+            image,
+            label,
+            binary_search_steps=binary_search_steps,
+            max_iterations=max_iterations,
+            learning_rate=learning_rate,
+            initial_const=initial_const,
+            tau_decrease_factor=tau_decrease_factor,
+        )
+        logging.info("Linf distance: %g", np.max(np.abs(adversarial - image)))
         linf_distances.append(np.max(np.abs(adversarial - image)))
     return linf_distances
 
@@ -66,12 +72,19 @@ class CarliniWagnerLIAttack(Attack):
     """
 
     @call_decorator
-    def __call__(self, input_or_adv, label=None, unpack=True,
-                 binary_search_steps=5,
-                 tau_decrease_factor=0.9,
-                 max_iterations=1000,
-                 confidence=0, learning_rate=5e-3,
-                 initial_const=1e-2, abort_early=True):
+    def __call__(
+        self,
+        input_or_adv,
+        label=None,
+        unpack=True,
+        binary_search_steps=5,
+        tau_decrease_factor=0.9,
+        max_iterations=1000,
+        confidence=0,
+        learning_rate=5e-3,
+        initial_const=1e-2,
+        abort_early=True,
+    ):
 
         """The L_infty version of the Carlini & Wagner attack.
 
@@ -118,8 +131,10 @@ class CarliniWagnerLIAttack(Attack):
         del unpack
 
         if not a.has_gradient():
-            logging.fatal('Applied gradient-based attack to model that '
-                          'does not provide gradients.')
+            logging.fatal(
+                "Applied gradient-based attack to model that "
+                "does not provide gradients."
+            )
             return
 
         min_, max_ = a.bounds()
@@ -171,21 +186,25 @@ class CarliniWagnerLIAttack(Attack):
         # Binary search for constant
         start_tau = 1.0
         for binary_search_step in range(binary_search_steps):
-            if binary_search_step == binary_search_steps - 1 and \
-                    binary_search_steps >= 10:
+            if (
+                binary_search_step == binary_search_steps - 1
+                and binary_search_steps >= 10
+            ):
                 # in the last binary search step, use the upper_bound instead
                 # TODO: find out why... it's not obvious why this is useful
                 const = upper_bound
 
             logging.info(
-                'starting optimization with const = {}, best overall distance = {}'.format(
-                    const, a.distance))
+                "starting optimization with const = {}, best overall distance = {}".format(
+                    const, a.distance
+                )
+            )
 
             # found adv with the current const
 
             att_warmstart = att_original
             tau = start_tau
-            while tau > 1. / 256:
+            while tau > 1.0 / 256:
                 found_adv = False
                 att_perturbation = np.zeros_like(att_original)
                 # create a new optimizer to minimize the perturbation
@@ -200,8 +219,16 @@ class CarliniWagnerLIAttack(Attack):
                     is_adv = not (false_label == true_label)
 
                     loss, dldx, adv_loss, distance = self.loss_function(
-                        const, tau, a, x, logits, reconstructed_original,
-                        confidence, min_, max_)
+                        const,
+                        tau,
+                        a,
+                        x,
+                        logits,
+                        reconstructed_original,
+                        confidence,
+                        min_,
+                        max_,
+                    )
 
                     check_loss = logits[true_label] - logits[false_label]
 
@@ -224,8 +251,7 @@ class CarliniWagnerLIAttack(Attack):
                         # Tau + binary search was successful but continuing opt
                         found_adv = True
 
-                    if abort_early and \
-                            iteration % (np.ceil(max_iterations / 10)) == 0:
+                    if abort_early and iteration % (np.ceil(max_iterations / 10)) == 0:
                         # after each tenth of the iterations, check progress
                         # logging.info('Iteration:{}, loss: {}; best overall distance: {}; is_adv:{}'.format(
                         #     iteration, loss, a.distance, is_adv))
@@ -263,8 +289,9 @@ class CarliniWagnerLIAttack(Attack):
                 const = (lower_bound + upper_bound) / 2
 
     @classmethod
-    def loss_function(cls, const, tau, a, x, logits, reconstructed_original,
-                      confidence, min_, max_):
+    def loss_function(
+        cls, const, tau, a, x, logits, reconstructed_original, confidence, min_, max_
+    ):
         """Returns the loss and the gradient of the loss w.r.t. x,
         assuming that logits = model(x)."""
 
@@ -285,8 +312,7 @@ class CarliniWagnerLIAttack(Attack):
 
         s = max_ - min_
         # squared_l2_distance = np.sum((x - reconstructed_original)**2) / s**2
-        linf_distance = np.sum(
-            np.maximum(np.abs(x - reconstructed_original) - tau, 0))
+        linf_distance = np.sum(np.maximum(np.abs(x - reconstructed_original) - tau, 0))
 
         total_loss = linf_distance + const * is_adv_loss
 
@@ -301,7 +327,8 @@ class CarliniWagnerLIAttack(Attack):
 
         squared_l2_distance_grad = (2 / s ** 2) * (x - reconstructed_original)
         linf_distance_grad = np.sign(x - reconstructed_original) * (
-                    np.abs(x - reconstructed_original) - tau > 0)
+            np.abs(x - reconstructed_original) - tau > 0
+        )
         total_loss_grad = linf_distance_grad + const * is_adv_loss_grad
         return total_loss, total_loss_grad, is_adv_loss, linf_distance
 
@@ -329,8 +356,7 @@ class AdamOptimizer:
         self.v = np.zeros(shape)
         self.t = 0
 
-    def __call__(self, gradient, learning_rate,
-                 beta1=0.9, beta2=0.999, epsilon=10e-8):
+    def __call__(self, gradient, learning_rate, beta1=0.9, beta2=0.999, epsilon=10e-8):
         """Updates internal parameters of the optimizer and returns
         the change that should be applied to the variable.
 

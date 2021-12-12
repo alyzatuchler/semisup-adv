@@ -3,35 +3,44 @@ Randomized smooothing certification. Based on code from
 https://github.com/locuslab/smoothing
 """
 
+from math import ceil
+
+import numpy as np
 import torch
 import torch.nn
 import torch.nn.functional as F
-
-import numpy as np
-
-from scipy.stats import norm, binom_test
+from scipy.stats import binom_test, norm
 from statsmodels.stats.proportion import proportion_confint
-from math import ceil
 
 
-def quick_smoothing(model, x, y, sigma=1.0, eps=1.0,
-                    num_smooth=100, batch_size=1000,
-                    softmax_temperature=100.0,
-                    detailed_output=False):
+def quick_smoothing(
+    model,
+    x,
+    y,
+    sigma=1.0,
+    eps=1.0,
+    num_smooth=100,
+    batch_size=1000,
+    softmax_temperature=100.0,
+    detailed_output=False,
+):
     """Quick and dirty randomized smoothing 'certification', without proper
      confidence bounds. We use it only to monitor training."""
-    x_noise = x.view(1, *x.shape) + sigma * torch.randn(
-        num_smooth, *x.shape).cuda()
+    x_noise = x.view(1, *x.shape) + sigma * torch.randn(num_smooth, *x.shape).cuda()
     x_noise = x_noise.view(-1, *x.shape[1:])
     # by setting a high softmax temperature, we are effectively using the
     # randomized smoothing approach as originally defined
     # it will be interesting to see if lower temperatures help
-    preds = torch.cat([F.softmax(softmax_temperature * model(batch), dim=-1)
-                       for batch in torch.split(x_noise, batch_size)])
+    preds = torch.cat(
+        [
+            F.softmax(softmax_temperature * model(batch), dim=-1)
+            for batch in torch.split(x_noise, batch_size)
+        ]
+    )
     preds = preds.view(num_smooth, x.shape[0], -1).mean(dim=0)
     p_max, y_pred = preds.max(dim=-1)
 
-    correct = (y_pred == y).cpu().numpy().astype('int64')
+    correct = (y_pred == y).cpu().numpy().astype("int64")
     radii = (sigma + 1e-16) * norm.ppf(p_max.cpu().numpy())
 
     err = (1 - correct).sum()
@@ -57,8 +66,9 @@ class Smooth(object):
     # to abstain, Smooth returns this int
     ABSTAIN = -1
 
-    def __init__(self, base_classifier: torch.nn.Module, num_classes: int,
-                 sigma: float):
+    def __init__(
+        self, base_classifier: torch.nn.Module, num_classes: int, sigma: float
+    ):
         """
         :param base_classifier: maps from [batch x channel x height x width] to [batch x num_classes]
         :param num_classes:
@@ -68,7 +78,9 @@ class Smooth(object):
         self.num_classes = num_classes
         self.sigma = sigma
 
-    def certify(self, x: torch.tensor, n0: int, n: int, alpha: float, batch_size: int) -> (int, float):
+    def certify(
+        self, x: torch.tensor, n0: int, n: int, alpha: float, batch_size: int
+    ) -> (int, float):
         """ Monte Carlo algorithm for certifying that g's prediction around x is constant within some L2 radius.
         With probability at least 1 - alpha, the class returned by this method will equal g(x), and g's prediction will
         robust within a L2 ball of radius R around x.
@@ -157,5 +169,4 @@ class Smooth(object):
         :return: a lower bound on the binomial proportion which holds true w.p at least (1 - alpha) over the samples
         """
         return proportion_confint(NA, N, alpha=2 * alpha, method="beta")[0]
-
 

@@ -17,7 +17,7 @@ import torch
 import torch.nn as nn
 import torchvision
 
-from dataloader import get_cifar10_vs_ti_loader
+from dataloader import get_cifar100_vs_ti_loader
 from utils import get_model
 
 torch.backends.cudnn.benchmark = True
@@ -65,8 +65,8 @@ def parse_args():
 
     args = parser.parse_args()
 
-    # 10 CIFAR10 classes and one non-CIFAR10 class
-    model_config = OrderedDict([("name", args.model), ("n_classes", 11)])
+    # 100 CIFAR100 classes and one non-CIFAR100 class
+    model_config = OrderedDict([("name", args.model), ("n_classes", 101)])
 
     optim_config = OrderedDict(
         [
@@ -82,7 +82,7 @@ def parse_args():
     )
 
     data_config = OrderedDict(
-        [("dataset", "CIFAR10VsTinyImages"), ("dataset_dir", args.data_dir)]
+        [("dataset", "CIFAR100VsTinyImages"), ("dataset_dir", args.data_dir)]
     )
 
     run_config = OrderedDict(
@@ -154,8 +154,8 @@ def train(epoch, model, optimizer, scheduler, criterion, train_loader, run_confi
 
     loss_meter = AverageMeter()
     accuracy_meter = AverageMeter()
-    accuracy_c10_meter = AverageMeter()
-    accuracy_c10_v_ti_meter = AverageMeter()
+    accuracy_c100_meter = AverageMeter()
+    accuracy_c100_v_ti_meter = AverageMeter()
     start = time.time()
 
     for step, (data, targets) in enumerate(train_loader):
@@ -185,17 +185,17 @@ def train(epoch, model, optimizer, scheduler, criterion, train_loader, run_confi
         loss_meter.update(loss_, num)
         accuracy_meter.update(accuracy, num)
 
-        is_c10 = targets != 10
-        num_c10 = is_c10.float().sum().item()
+        is_c100 = targets != 100
+        num_c100 = is_c100.float().sum().item()
         # Computing cifar10 accuracy
-        if num_c10 > 0:
-            _, preds_c10 = torch.max(outputs[is_c10, :10], dim=1)
-            correct_c10_ = preds_c10.eq(targets[is_c10]).sum().item()
-            accuracy_c10_meter.update(correct_c10_ / num_c10, num_c10)
+        if num_c100 > 0:
+            _, preds_c100 = torch.max(outputs[is_c100, :100], dim=1)
+            correct_c100_ = preds_c100.eq(targets[is_c100]).sum().item()
+            accuracy_c100_meter.update(correct_c100_ / num_c100, num_c100)
 
         # Computing cifar10 vs. ti accuracy
-        correct_c10_v_ti_ = (preds != 10).float().eq(is_c10.float()).sum().item()
-        accuracy_c10_v_ti_meter.update(correct_c10_v_ti_ / num, num)
+        correct_c100_v_ti_ = (preds != 10).float().eq(is_c100.float()).sum().item()
+        accuracy_c100_v_ti_meter.update(correct_c100_v_ti_ / num, num)
 
         if step % 100 == 0:
             logger.info(
@@ -211,10 +211,10 @@ def train(epoch, model, optimizer, scheduler, criterion, train_loader, run_confi
                     loss_meter.avg,
                     accuracy_meter.val,
                     accuracy_meter.avg,
-                    accuracy_c10_meter.val,
-                    accuracy_c10_meter.avg,
-                    accuracy_c10_v_ti_meter.val,
-                    accuracy_c10_v_ti_meter.avg,
+                    accuracy_c100_meter.val,
+                    accuracy_c100_meter.avg,
+                    accuracy_c100_v_ti_meter.val,
+                    accuracy_c100_v_ti_meter.avg,
                 )
             )
 
@@ -228,8 +228,8 @@ def train(epoch, model, optimizer, scheduler, criterion, train_loader, run_confi
                 {
                     "loss": loss_meter.avg,
                     "accuracy": accuracy_meter.avg,
-                    "accuracy_c10": accuracy_c10_meter.avg,
-                    "accuracy_vs": accuracy_c10_v_ti_meter.avg,
+                    "accuracy_c10": accuracy_c100_meter.avg,
+                    "accuracy_vs": accuracy_c100_v_ti_meter.avg,
                     "time": elapsed,
                 }
             ),
@@ -245,8 +245,8 @@ def test(epoch, model, criterion, test_loader, run_config):
     device = torch.device(run_config["device"])
 
     loss_meter = AverageMeter()
-    correct_c10_meter = AverageMeter()
-    correct_c10_v_ti_meter = AverageMeter()
+    correct_c100_meter = AverageMeter()
+    correct_c100_v_ti_meter = AverageMeter()
     start = time.time()
     with torch.no_grad():
         for step, (data, targets) in enumerate(test_loader):
@@ -261,24 +261,24 @@ def test(epoch, model, criterion, test_loader, run_config):
             num = data.size(0)
             loss_meter.update(loss_, num)
 
-            is_c10 = targets != 10
-            # cifar10 accuracy
-            if is_c10.float().sum() > 0:
-                _, preds_c10 = torch.max(outputs[is_c10, :10], dim=1)
-                correct_c10_ = preds_c10.eq(targets[is_c10]).sum().item()
-                correct_c10_meter.update(correct_c10_, 1)
+            is_c100 = targets != 100
+            # cifar100 accuracy
+            if is_c100.float().sum() > 0:
+                _, preds_c100 = torch.max(outputs[is_c100, :100], dim=1)
+                correct_c100_ = preds_c100.eq(targets[is_c100]).sum().item()
+                correct_c100_meter.update(correct_c100_, 1)
 
-            # cifar10 vs. TI accuracy
-            correct_c10_v_ti_ = (preds != 10).float().eq(is_c10.float()).sum().item()
-            correct_c10_v_ti_meter.update(correct_c10_v_ti_, 1)
+            # cifar100 vs. TI accuracy
+            correct_c100_v_ti_ = (preds != 100).float().eq(is_c100.float()).sum().item()
+            correct_c100_v_ti_meter.update(correct_c100_v_ti_, 1)
 
     test_targets = np.array(test_loader.dataset.targets)
-    accuracy_c10 = correct_c10_meter.sum / (test_targets < 10).sum()
-    accuracy_vs = correct_c10_v_ti_meter.sum / len(test_targets)
+    accuracy_c100 = correct_c100_meter.sum / (test_targets < 100).sum()
+    accuracy_vs = correct_c100_v_ti_meter.sum / len(test_targets)
 
     logger.info(
         "Epoch {} Loss {:.4f} Accuracy inside C10 {:.4f},"
-        " C10-vs-TI {:.4f}".format(epoch, loss_meter.avg, accuracy_c10, accuracy_vs)
+        " C10-vs-TI {:.4f}".format(epoch, loss_meter.avg, accuracy_c100, accuracy_vs)
     )
 
     elapsed = time.time() - start
@@ -290,7 +290,7 @@ def test(epoch, model, criterion, test_loader, run_config):
             "test": OrderedDict(
                 {
                     "loss": loss_meter.avg,
-                    "accuracy_c10": accuracy_c10,
+                    "accuracy_c10": accuracy_c100,
                     "accuracy_vs": accuracy_vs,
                     "time": elapsed,
                 }
@@ -327,11 +327,11 @@ def main():
         json.dump(config, fout, indent=2)
 
     # data loaders
-    train_loader, test_loader = get_cifar10_vs_ti_loader(
+    train_loader, test_loader = get_cifar100_vs_ti_loader(
         optim_config["batch_size"],
         run_config["num_workers"],
         run_config["device"] != "cpu",
-        optim_config["cifar10_fraction"],
+        optim_config["cifar100_fraction"],
         dataset_dir=data_config["dataset_dir"],
         logger=logger,
     )
