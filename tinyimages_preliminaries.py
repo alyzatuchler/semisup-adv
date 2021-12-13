@@ -12,6 +12,7 @@ import logging
 import os
 import pdb
 import pickle
+import sys
 import time
 
 import numpy as np
@@ -24,15 +25,25 @@ from scipy.spatial.distance import cdist
 from torch.nn import DataParallel
 from torch.utils.data import DataLoader, Dataset
 
-from utils import load_cifar10_keywords, load_tinyimage_subset
+from datasets import DATASETS
+from utils import load_cifar10_keywords, load_cifar100_keywords, load_tinyimage_subset
 
 cudnn.benchmark = True
 
 # ----------------------------- CONFIGURATION ----------------------------------
 parser = argparse.ArgumentParser(
-    description="Compute distances from Tiny Images to CIFAR10 test set \
-    and split train/test indices for TI vs. CIFAR10 model"
+    description="Compute distances from Tiny Images to CIFAR10/100 test set \
+    and split train/test indices for TI vs. CIFAR10/100 model"
 )
+
+parser.add_argument(
+    "--dataset",
+    type=str,
+    default="cifar10",
+    choices=DATASETS,
+    help="The dataset to use for training)",
+)
+
 
 # Path config
 parser.add_argument(
@@ -170,10 +181,10 @@ def main():
         ],
     )
 
-    logging.info("Distance to CIFAR-10 test set")
+    logging.info(f"Distance to {args.dataset} test set")
     logging.info("Args: %s", args)
 
-    num_images = 79302017
+    num_images = 79_302_017
     if args.features == "raw":
         data_path = os.path.join(args.data_dir, "tiny_images.bin")
         data_dtype = "uint8"
@@ -181,7 +192,7 @@ def main():
         data_path = os.path.join(args.data_dir, args.features)
         data_dtype = "float32"
 
-    out_path = os.path.join(args.output_dir, "distance_to_cifar10_test.pickle")
+    out_path = os.path.join(args.output_dir, f"distance_to_{args.dataset}_test.pickle")
     if os.path.exists(out_path):
         logging.info("Distance file exists, skipping computation")
     else:
@@ -197,14 +208,19 @@ def main():
             pin_memory=True,
         )
 
-        # get cifar10 test indices for target set
+        # get cifar10/100 test indices for target set
         logging.info("Getting CIFAR10 test set images")
-        keyword_data = load_cifar10_keywords(args.data_dir)
-        cifar10_test_indices = np.array([x["nn_index"] for x in keyword_data[-10000:]])
-        cifar10_test_data = to_tensor(data[cifar10_test_indices], data.dtype)
+        if args.dataset == "cifar10":
+            keyword_data = load_cifar10_keywords(args.data_dir)
+        elif args.dataset == "cifar100":
+            keyword_data = load_cifar100_keywords(args.data_dir)
+        else:
+            sys.exit()
+        cifar_test_indices = np.array([x["nn_index"] for x in keyword_data[-10000:]])
+        cifar_test_data = to_tensor(data[cifar_test_indices], data.dtype)
 
         logging.info("Initializing NN computation")
-        nn_distance = DataParallel(NNDistance(args.metric, cifar10_test_data)).cuda()
+        nn_distance = DataParallel(NNDistance(args.metric, cifar_test_data)).cuda()
 
         logging.info("Running distance computation")
         output_batches = []
@@ -230,7 +246,9 @@ def main():
                 prev_count = count
 
         # save the results
-        out_path = os.path.join(args.output_dir, "distance_to_cifar10_test.pickle")
+        out_path = os.path.join(
+            args.output_dir, f"distance_to_{args.dataset}_test.pickle"
+        )
         logging.info("Saving results to %s" % out_path)
         nn_distances, nn_indices = [np.concatenate(x) for x in zip(*output_batches)]
         nn_indices = nn_indices.astype("uint16")
@@ -238,12 +256,12 @@ def main():
             pickle.dump(dict(nn_distances=nn_distances, nn_indices=nn_indices), f)
         logging.info("Saved results to %s" % out_path)
 
-    # ------------ Choosing indices for TI vs. Cifar10 task -------------#
+    # ------------ Choosing indices for TI vs. Cifar10/100 task -------------#
     indices_path = os.path.join(args.output_dir, "ti_vs_cifar_inds.pickle")
     if os.path.exists(indices_path):
         logging.info("TI indices for selection model file exists")
     else:
-        # load TI indices of keywords found in CIFAR10
+        # load TI indices of keywords found in CIFAR10/100
         tinyimage_indices, tinyimage_data = load_tinyimage_subset(args.data_dir)
 
         # put TI metadata in more convenient form

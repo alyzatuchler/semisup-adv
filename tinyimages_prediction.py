@@ -19,10 +19,25 @@ from torch.nn import DataParallel
 from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms
 
+from datasets import DATASETS
 from utils import get_model, load_cifar10_keywords
 
 parser = argparse.ArgumentParser(
     description="Apply pretrained network on entire Tiny Images dataset"
+)
+parser.add_argument(
+    "--dataset",
+    type=str,
+    default="cifar10",
+    choices=DATASETS,
+    help="The dataset to use for training)",
+)
+parser.add_argument(
+    "--num_classes",
+    type=int,
+    default="cifar100",
+    choices=[10, 20, 50, 100],
+    help="The number of classes [May fail if incompatible with dataset]",
 )
 # Model details
 parser.add_argument(
@@ -105,7 +120,7 @@ logging.info("Args: %s", args)
 
 
 # create dataset and loader
-num_images = 79302017
+num_images = 79_302_017
 data_path = os.path.join(args.data_dir, "tiny_images.bin")
 data = (
     np.memmap(data_path, mode="r", dtype="uint8", order="C")
@@ -221,10 +236,12 @@ ti_predicted_labels = np.argmax(ti_logits, axis=-1)
 ti_prediction_probs = ti_probs[np.arange(len(ti_probs)), ti_predicted_labels]
 
 # Creating list of valid images to be used
-num_images = 79302017
+num_images = 79_302_017
 is_valid = np.ones(num_images, dtype="bool")
 
-with open(os.path.join(args.data_dir, "distance_to_cifar10_test.pickle"), "rb") as f:
+with open(
+    os.path.join(args.data_dir, f"distance_to_{args.dataset}_test.pickle"), "rb"
+) as f:
     ldd = pickle.load(f)
     nn_distances, nn_indices = ldd["nn_distances"], ldd["nn_indices"]
 
@@ -233,7 +250,7 @@ is_valid &= nn_distances > args.l2_cutoff
 
 # Creating label balanced set by choosing top predictions of each label
 inds = np.zeros(0, dtype="int")
-labels = list(range(10))
+labels = list(range(args.num_classes))
 for label in labels:
     mask = is_valid & (ti_predicted_labels == label)
     inds = np.concatenate(

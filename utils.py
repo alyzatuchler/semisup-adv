@@ -119,6 +119,22 @@ def load_cifar10_by_keyword(unique_keywords=True, version_string="v7"):
     return cifar10_by_keyword
 
 
+def load_cifar100_by_keyword(unique_keywords=True, version_string="v7"):
+    cifar100_keywords = load_cifar100_keywords(
+        unique_keywords=unique_keywords,
+        lists_for_unique=True,
+        version_string=version_string,
+    )
+    cifar100_by_keyword = {}
+    for ii, keyword_entries in enumerate(cifar100_keywords):
+        for entry in keyword_entries:
+            cur_keyword = entry["nn_keyword"]
+            if not cur_keyword in cifar100_by_keyword:
+                cifar100_by_keyword[cur_keyword] = []
+            cifar100_by_keyword[cur_keyword].append(ii)
+    return cifar100_by_keyword
+
+
 def load_cifar10_keywords(
     other_data_path, unique_keywords=True, lists_for_unique=False, version_string="v7"
 ):
@@ -143,9 +159,56 @@ def load_cifar10_keywords(
     return result
 
 
+def load_cifar100_keywords(
+    other_data_path, unique_keywords=True, lists_for_unique=False, version_string="v7"
+):
+    filename = "cifar100_keywords"
+    if unique_keywords:
+        filename += "_unique"
+    if version_string != "":
+        filename += "_" + version_string
+    filename += ".json"
+    keywords_filepath = os.path.abspath(os.path.join(other_data_path, filename))
+    print("Loading keywords from file {}".format(keywords_filepath))
+    assert pathlib.Path(keywords_filepath).is_file()
+    with open(keywords_filepath, "r") as f:
+        cifar100_keywords = json.load(f)
+    if unique_keywords and lists_for_unique:
+        result = []
+        for entry in cifar100_keywords:
+            result.append([entry])
+    else:
+        result = cifar100_keywords
+    assert len(result) == 60000
+    return result
+
+
 def load_distances_to_cifar10(version_string="v7"):
     data_path = os.path.join(os.path.dirname(__file__), "../data/")
     filename = "tinyimage_cifar10_distances"
+    if version_string != "":
+        filename += "_" + version_string
+    filename += ".json"
+    filepath = os.path.abspath(os.path.join(data_path, filename))
+    print("Loading distances from file {}".format(filepath))
+    assert pathlib.Path(filepath).is_file()
+    with open(filepath, "r") as f:
+        tmp = json.load(f)
+    if version_string == "v4":
+        assert len(tmp) == 372131
+    elif version_string == "v6":
+        assert len(tmp) == 1646248
+    elif version_string == "v7":
+        assert len(tmp) == 589711
+    result = {}
+    for k, v in tmp.items():
+        result[int(k)] = v
+    return result
+
+
+def load_distances_to_cifar100(version_string="v7"):
+    data_path = os.path.join(os.path.dirname(__file__), "../data/")
+    filename = "tinyimage_cifar100_distances"
     if version_string != "":
         filename += "_" + version_string
     filename += ".json"

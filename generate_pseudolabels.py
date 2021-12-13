@@ -22,6 +22,7 @@ from torchvision import transforms
 from torchvision.datasets import CIFAR10, CIFAR100
 from torchvision.transforms import ToTensor
 
+import utils
 from datasets import DATASETS
 
 parser = argparse.ArgumentParser(
@@ -37,7 +38,7 @@ parser.add_argument(
 parser.add_argument(
     "--num_classes",
     type=int,
-    default="cifar100",
+    default=10,
     choices=[10, 20, 50, 100],
     help="The number of classes [May fail if incompatible with dataset]",
 )
@@ -97,7 +98,9 @@ checkpoint = torch.load(
 )
 num_classes = checkpoint.get("num_classes", args.num_classes)
 normalize_input = checkpoint.get("normalize_input", False)
-model = get_model(args.model, num_classes=num_classes, normalize_input=normalize_input)
+model = utils.get_model(
+    args.model, num_classes=num_classes, normalize_input=normalize_input
+)
 model = nn.DataParallel(model).cuda()
 model.load_state_dict(checkpoint["state_dict"])
 
