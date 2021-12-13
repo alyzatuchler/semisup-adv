@@ -5,6 +5,7 @@ Based on code from https://github.com/hysts/pytorch_shake_shake
 import os
 import pdb
 import pickle
+import sys
 
 import numpy as np
 import torch
@@ -12,7 +13,7 @@ import torchvision
 from torch.utils import data
 
 
-def get_loader(batch_size, num_workers, use_gpu):
+def get_loader(batch_size, num_workers, use_gpu, dataset="cifar10"):
     mean = np.array([0.4914, 0.4822, 0.4465])
     std = np.array([0.2470, 0.2435, 0.2616])
 
@@ -29,12 +30,23 @@ def get_loader(batch_size, num_workers, use_gpu):
     )
 
     dataset_dir = "data"
-    train_dataset = torchvision.datasets.CIFAR10(
-        dataset_dir, train=True, transform=train_transform, download=True
-    )
-    test_dataset = torchvision.datasets.CIFAR10(
-        dataset_dir, train=False, transform=test_transform, download=True
-    )
+
+    if dataset == "cifar10":
+        train_dataset = torchvision.datasets.CIFAR10(
+            dataset_dir, train=True, transform=train_transform, download=True
+        )
+        test_dataset = torchvision.datasets.CIFAR10(
+            dataset_dir, train=False, transform=test_transform, download=True
+        )
+    elif dataset == "cifar100":
+        train_dataset = torchvision.datasets.CIFAR100(
+            dataset_dir, train=True, transform=train_transform, download=True
+        )
+        test_dataset = torchvision.datasets.CIFAR100(
+            dataset_dir, train=False, transform=test_transform, download=True
+        )
+    else:
+        sys.quit()
 
     train_loader = data.DataLoader(
         train_dataset,
